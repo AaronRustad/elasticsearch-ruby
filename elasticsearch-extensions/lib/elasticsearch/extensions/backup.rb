@@ -125,8 +125,28 @@ module Backup
             raise Error, "Unsupported mode [#{mode}]"
         end
 
-        log!(:finished)
+        pipeline = Pipeline.new
+        dump_ext = 'tar'
+
+        pipeline << "#{ utility(:tar) } -cf - " + "-C '#{ dump_path }' '#{ dump_filename }'"
+
+        model.compressor.compress_with do |command, ext|
+          pipeline << command
+          dump_ext << ext
+        end if model.compressor
+
+        pipeline << "#{ utility(:cat) } > " + "'#{ File.join(dump_path, dump_filename) }.#{ dump_ext }'"
+
+        pipeline.run
+
+        if pipeline.success?
+          FileUtils.rm_rf path
+          log!(:finished)
+        else
+          raise Error, "Dump Failed!\n" + pipeline.error_messages
+        end
       end
+
 
       def client
         @client ||= ::Elasticsearch::Client.new url: url, logger: logger
@@ -153,8 +173,11 @@ module Backup
 
         while r = client.scroll(scroll_id: r['_scroll_id'], scroll: scroll) and not r['hits']['hits'].empty? do
           r['hits']['hits'].each do |hit|
-            FileUtils.mkdir_p "#{path.join hit['_index'], hit['_type']}"
-            File.open("#{path.join hit['_index'], hit['_type'], hit['_id']}.json", 'w') do |file|
+            sanitized_index = Shellwords.escape(hit['_index'])
+            sanitized_type  = Shellwords.escape(hit['_type'])
+            sanitized_id    = Shellwords.escape(hit['_id']).gsub(/\//, '-')
+            FileUtils.mkdir_p "#{path.join sanitized_index, sanitized_type}"
+            File.open("#{path.join sanitized_index, sanitized_type, sanitized_id}.json", 'w') do |file|
               file.write MultiJson.dump(hit)
             end
           end
