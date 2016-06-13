@@ -19,6 +19,7 @@ Gem::Specification.new do |s|
   s.require_paths = ["lib"]
 
   s.add_dependency "ansi"
+  s.add_dependency "fog-aws"
 
   unless File.exists? File.expand_path("../../elasticsearch/elasticsearch.gemspec", __FILE__)
     s.add_dependency "elasticsearch"
